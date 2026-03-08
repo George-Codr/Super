@@ -10,7 +10,11 @@ jobs:
   build:
     runs-on: macos-14
     env:
-      TERMUX_ON_DEVICE_BUILD: false
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+      PREFIX: ${{ github.workspace }}/prefix
+      ANDROID_SDK_VERSION: 35
+      ANDROID_BUILD_TOOLS: 35.0.0
+      ANDROID_NDK_VERSION: 27.3.13750724
       TERMUX_ARCH: arm64
       TERMUX_PKG_API_LEVEL: 35
 
@@ -25,37 +29,82 @@ jobs:
           
           # Ensure clang is available via Xcode CLI tools
           xcode-select --install || echo "Xcode CLI tools already installed"
-          
-      - name: Setup Android SDK
-        run: |
-          SDK_ROOT="${{ github.workspace }}/android-sdk"
-          mkdir -p "$SDK_ROOT/cmdline-tools"
-          cd "$SDK_ROOT"
-          wget https://dl.google.com/android/repository/commandlinetools-mac-9477386_latest.zip -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip -d "$SDK_ROOT/cmdline-tools"
-          rm cmdline-tools.zip
-          export PATH="$SDK_ROOT/cmdline-tools/bin:$PATH"
-          sdkmanager --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.3.13750724" --install
 
-      - name: Setup Android NDK
+      - name: Download Android command line tools
         run: |
-          SDK_ROOT="${{ github.workspace }}/android-sdk"
-          NDK_PATH=$(find "$SDK_ROOT/ndk" -maxdepth 1 -type d | sort -r | head -n 1)
-          echo "NDK found at $NDK_PATH"
+          set -euxo pipefail
+          mkdir -p "$ANDROID_HOME"
+          cd "$ANDROID_HOME"
+
+          wget https://dl.google.com/android/repository/commandlinetools-mac-9477386_latest.zip -O tools.zip
+          unzip -q tools.zip
+          rm tools.zip
+
+          mkdir -p cmdline-tools/latest
+          mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
+
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+      - name: Accept SDK licenses
+        run: |
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
+
+      - name: Install Android NDK
+        run: |
+          set -euxo pipefail
+          sdkmanager --sdk_root="$ANDROID_HOME" \
+            "platform-tools" \
+            "platforms;android-${ANDROID_SDK_VERSION}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+
+          echo "✅ Android NDK ${ANDROID_NDK_VERSION} installed."
+          ls -1 "$ANDROID_HOME/ndk/"
+
+      - name: Set environment to use SDK/NDK Clang
+        run: |
+          set -euxo pipefail
+
+          NDK_PATH="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+
+          if [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
+            TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64"
+          elif [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64" ]; then
+            TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64"
+          else
+            echo "⚠️ NDK toolchain not found; using system clang"
+            TOOLCHAIN="/usr"
+          fi
+
+          echo "$TOOLCHAIN/bin" >> $GITHUB_PATH
+
+          if [ -x "$TOOLCHAIN/bin/clang" ]; then
+            echo "CC=$TOOLCHAIN/bin/clang" >> $GITHUB_ENV
+            echo "CXX=$TOOLCHAIN/bin/clang++" >> $GITHUB_ENV
+          else
+            echo "CC=$(command -v clang)" >> $GITHUB_ENV
+            echo "CXX=$(command -v clang++)" >> $GITHUB_ENV
+          fi
+
+          echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+          echo "LD=$TOOLCHAIN/bin/ld.lld" >> $GITHUB_ENV
+          echo "NM=$TOOLCHAIN/bin/llvm-nm" >> $GITHUB_ENV
+          echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
+
           echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "✅ Using Clang from SDK/NDK"
 
-      - name: Make build.sh executable
-        run: chmod +x ./build.sh
+      - name: Prepare prefix
+        run: mkdir -p "$PREFIX"
+
+      - name: Make build script executable
+        run: chmod +x build.sh
 
       - name: Build Python
         run: |
-          PREFIX="${{ github.workspace }}/prefix"
-          mkdir -p "$PREFIX"
-          export PREFIX
+          export PREFIX="$PREFIX"
           ./build.sh
 
-      - name: List Built Files
+      - name: Show result
         run: |
-          PREFIX="${{ github.workspace }}/prefix"
-          echo "Built Python files in $PREFIX/bin:"
-          ls -l "$PREFIX/bin"
+          ls -lh "$PREFIX/bin" || true
