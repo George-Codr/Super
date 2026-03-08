@@ -2,10 +2,13 @@ name: Build Python for Android
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ master ]
+    
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-14
     env:
       TERMUX_ON_DEVICE_BUILD: false
       TERMUX_ARCH: arm64
@@ -13,12 +16,16 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Install Dependencies
         run: |
-          brew install wget unzip git make pkg-config clang automake autoconf
-
+          # Install basic tools
+          brew install wget unzip git make pkg-config automake autoconf
+          
+          # Ensure clang is available via Xcode CLI tools
+          xcode-select --install || echo "Xcode CLI tools already installed"
+          
       - name: Setup Android SDK
         run: |
           SDK_ROOT="${{ github.workspace }}/android-sdk"
