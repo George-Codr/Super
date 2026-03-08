@@ -22,12 +22,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
-          # Install basic tools
-          brew install wget unzip git make pkg-config automake autoconf
-          
-          # Ensure clang is available via Xcode CLI tools
+          brew install wget unzip git make pkg-config automake autoconf coreutils
+          echo "/opt/homebrew/opt/coreutils/libexec/gnubin" >> $GITHUB_PATH || true
           xcode-select --install || echo "Xcode CLI tools already installed"
 
       - name: Download Android command line tools
