@@ -1,13 +1,13 @@
-name: Build Termux Python for Android
+name: Build Termux Python for Android (macOS)
 
 on:
   workflow_dispatch:
   push:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   android-build:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
 
     env:
       TERMUX_PKG_API_LEVEL: 35
@@ -15,6 +15,7 @@ jobs:
       ANDROID_NDK_VERSION: 27.3.13750724
       ANDROID_BUILD_TOOLS: 35.0.0
       TERMUX_PREFIX: ${{ github.workspace }}/prefix
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
 
     steps:
       - name: Checkout code
@@ -22,26 +23,25 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y \
-            autoconf automake pkg-config make clang wget curl unzip xz-utils \
-            python3 git cmake
+          brew install cmake wget unzip xz python git
 
       - name: Download Android SDK command line tools
         run: |
-          mkdir -p $HOME/android-sdk
-          cd $HOME/android-sdk
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk-tools.zip
-          unzip sdk-tools.zip
-          rm sdk-tools.zip
+          mkdir -p $ANDROID_SDK_ROOT
+          cd $ANDROID_SDK_ROOT
+          wget https://dl.google.com/android/repository/commandlinetools-mac-9477386_latest.zip -O cmdline-tools.zip
+          unzip cmdline-tools.zip
+          rm cmdline-tools.zip
+          mkdir -p cmdline-tools/latest
+          mv cmdline-tools/* cmdline-tools/latest/
 
       - name: Accept Android SDK licenses
         run: |
-          yes | $HOME/android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk --licenses
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
 
       - name: Install exact NDK, build-tools, platform-tools
         run: |
-          $HOME/android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk \
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
             "platform-tools" \
             "platforms;android-${{ env.TERMUX_PKG_API_LEVEL }}" \
             "build-tools;${{ env.ANDROID_BUILD_TOOLS }}" \
@@ -49,17 +49,15 @@ jobs:
 
       - name: Set NDK environment variables
         run: |
-          export ANDROID_NDK_HOME=$HOME/android-sdk/ndk/${ANDROID_NDK_VERSION}
-          export PATH=$ANDROID_NDK_HOME:$PATH
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${ANDROID_NDK_VERSION}" >> $GITHUB_ENV
+          echo "PATH=$ANDROID_SDK_ROOT/ndk/${ANDROID_NDK_VERSION}:$PATH" >> $GITHUB_ENV
 
       - name: Setup standalone toolchain
         run: |
-          $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py \
-            --arch aarch64 \
+          $ANDROID_SDK_ROOT/ndk/${ANDROID_NDK_VERSION}/build/tools/make_standalone_toolchain.py \
+            --arch arm64 \
             --api $TERMUX_PKG_API_LEVEL \
             --install-dir $GITHUB_WORKSPACE/ndk-toolchain
-          export TERMUX_STANDALONE_TOOLCHAIN=$GITHUB_WORKSPACE/ndk-toolchain
           echo "TERMUX_STANDALONE_TOOLCHAIN=$GITHUB_WORKSPACE/ndk-toolchain" >> $GITHUB_ENV
 
       - name: Show environment
