@@ -1,0 +1,86 @@
+name: Build Termux Python for Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  android-build:
+    runs-on: ubuntu-latest
+
+    env:
+      TERMUX_PKG_API_LEVEL: 35
+      TERMUX_ARCH: aarch64
+      ANDROID_NDK_VERSION: 27.3.13750724
+      ANDROID_BUILD_TOOLS: 35.0.0
+      TERMUX_PREFIX: ${{ github.workspace }}/prefix
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            autoconf automake pkg-config make clang wget curl unzip xz-utils \
+            python3 git cmake
+
+      - name: Download Android SDK command line tools
+        run: |
+          mkdir -p $HOME/android-sdk
+          cd $HOME/android-sdk
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O sdk-tools.zip
+          unzip sdk-tools.zip
+          rm sdk-tools.zip
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | $HOME/android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk --licenses
+
+      - name: Install exact NDK, build-tools, platform-tools
+        run: |
+          $HOME/android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk \
+            "platform-tools" \
+            "platforms;android-${{ env.TERMUX_PKG_API_LEVEL }}" \
+            "build-tools;${{ env.ANDROID_BUILD_TOOLS }}" \
+            "ndk;${{ env.ANDROID_NDK_VERSION }}"
+
+      - name: Set NDK environment variables
+        run: |
+          export ANDROID_NDK_HOME=$HOME/android-sdk/ndk/${ANDROID_NDK_VERSION}
+          export PATH=$ANDROID_NDK_HOME:$PATH
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+
+      - name: Setup standalone toolchain
+        run: |
+          $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py \
+            --arch aarch64 \
+            --api $TERMUX_PKG_API_LEVEL \
+            --install-dir $GITHUB_WORKSPACE/ndk-toolchain
+          export TERMUX_STANDALONE_TOOLCHAIN=$GITHUB_WORKSPACE/ndk-toolchain
+          echo "TERMUX_STANDALONE_TOOLCHAIN=$GITHUB_WORKSPACE/ndk-toolchain" >> $GITHUB_ENV
+
+      - name: Show environment
+        run: |
+          echo "Prefix: $TERMUX_PREFIX"
+          echo "NDK: $ANDROID_NDK_HOME"
+          echo "Standalone toolchain: $TERMUX_STANDALONE_TOOLCHAIN"
+          clang --version
+
+      - name: Build Python
+        run: |
+          chmod +x build.sh
+          bash build.sh
+
+      - name: Verify Python
+        run: |
+          $TERMUX_PREFIX/bin/python3.13 --version
+          ls -lh $TERMUX_PREFIX/bin
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-prefix-android
+          path: prefix
