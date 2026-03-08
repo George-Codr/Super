@@ -3,7 +3,7 @@ name: Build Termux Python for Android
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   android-build:
