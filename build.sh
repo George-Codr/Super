@@ -78,7 +78,12 @@ TERMUX_PKG_LICENSE_FILE="LICENSE"
 TERMUX_PKG_MAINTAINER="Yaksh Bariya <thunder-coding@termux.dev>"
 TERMUX_PKG_VERSION="3.13.12"
 TERMUX_PKG_REVISION=3
-TERMUX_PKG_MAKE_PROCESSES=$(nproc)
+if [ "$(uname)" = "Darwin" ]; then
+  export TERMUX_PKG_MAKE_PROCESSES="$(sysctl -n hw.ncpu)"
+else
+  export TERMUX_PKG_MAKE_PROCESSES="$(nproc)"
+fi
+#TERMUX_PKG_MAKE_PROCESSES=$(nproc)
 
 # Debian python3-defaults commit — py3compile, py3clean, debpython helpers.
 _DEBPYTHON_COMMIT=f358ab52bf2932ad55b1a72a29c9762169e6ac47
