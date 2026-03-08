@@ -1,84 +1,54 @@
-name: Build Termux Python for Android (macOS)
+name: Build Python for Android
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ master ]
 
 jobs:
-  android-build:
+  build:
     runs-on: macos-15
-
     env:
+      TERMUX_ON_DEVICE_BUILD: false
+      TERMUX_ARCH: arm64
       TERMUX_PKG_API_LEVEL: 35
-      TERMUX_ARCH: aarch64
-      ANDROID_NDK_VERSION: 27.3.13750724
-      ANDROID_BUILD_TOOLS: 35.0.0
-      TERMUX_PREFIX: ${{ github.workspace }}/prefix
-      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
-          brew install cmake wget unzip xz python git
+          brew install wget unzip git make pkg-config clang automake autoconf
 
-      - name: Download Android SDK command line tools
+      - name: Setup Android SDK
         run: |
-          mkdir -p $ANDROID_SDK_ROOT
-          cd $ANDROID_SDK_ROOT
+          SDK_ROOT="${{ github.workspace }}/android-sdk"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          cd "$SDK_ROOT"
           wget https://dl.google.com/android/repository/commandlinetools-mac-9477386_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d "$SDK_ROOT/cmdline-tools"
           rm cmdline-tools.zip
-          mkdir -p cmdline-tools/latest
-          mv cmdline-tools/* cmdline-tools/latest/
+          export PATH="$SDK_ROOT/cmdline-tools/bin:$PATH"
+          sdkmanager --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.3.13750724" --install
 
-      - name: Accept Android SDK licenses
+      - name: Setup Android NDK
         run: |
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
+          SDK_ROOT="${{ github.workspace }}/android-sdk"
+          NDK_PATH=$(find "$SDK_ROOT/ndk" -maxdepth 1 -type d | sort -r | head -n 1)
+          echo "NDK found at $NDK_PATH"
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
 
-      - name: Install exact NDK, build-tools, platform-tools
-        run: |
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
-            "platform-tools" \
-            "platforms;android-${{ env.TERMUX_PKG_API_LEVEL }}" \
-            "build-tools;${{ env.ANDROID_BUILD_TOOLS }}" \
-            "ndk;${{ env.ANDROID_NDK_VERSION }}"
-
-      - name: Set NDK environment variables
-        run: |
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${ANDROID_NDK_VERSION}" >> $GITHUB_ENV
-          echo "PATH=$ANDROID_SDK_ROOT/ndk/${ANDROID_NDK_VERSION}:$PATH" >> $GITHUB_ENV
-
-      - name: Setup standalone toolchain
-        run: |
-          $ANDROID_SDK_ROOT/ndk/${ANDROID_NDK_VERSION}/build/tools/make_standalone_toolchain.py \
-            --arch arm64 \
-            --api $TERMUX_PKG_API_LEVEL \
-            --install-dir $GITHUB_WORKSPACE/ndk-toolchain
-          echo "TERMUX_STANDALONE_TOOLCHAIN=$GITHUB_WORKSPACE/ndk-toolchain" >> $GITHUB_ENV
-
-      - name: Show environment
-        run: |
-          echo "Prefix: $TERMUX_PREFIX"
-          echo "NDK: $ANDROID_NDK_HOME"
-          echo "Standalone toolchain: $TERMUX_STANDALONE_TOOLCHAIN"
-          clang --version
+      - name: Make build.sh executable
+        run: chmod +x ./build.sh
 
       - name: Build Python
         run: |
-          chmod +x build.sh
-          bash build.sh
+          PREFIX="${{ github.workspace }}/prefix"
+          mkdir -p "$PREFIX"
+          export PREFIX
+          ./build.sh
 
-      - name: Verify Python
+      - name: List Built Files
         run: |
-          $TERMUX_PREFIX/bin/python3.13 --version
-          ls -lh $TERMUX_PREFIX/bin
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-prefix-android
-          path: prefix
+          PREFIX="${{ github.workspace }}/prefix"
+          echo "Built Python files in $PREFIX/bin:"
+          ls -l "$PREFIX/bin"
