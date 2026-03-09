@@ -539,9 +539,10 @@ termux_step_pre_configure() {
 
     # ── §9.7  debpython version-placeholder substitution  [A] ─────────────
     if [[ -d "$TERMUX_PKG_SRCDIR/debpython" ]]; then
+	    mkdir -p "$TERMUX_PKG_SRCDIR/debpython"
         local fullver="${TERMUX_PKG_VERSION}-${TERMUX_PKG_REVISION}"
         while IFS= read -r -d '' file; do
-            sed -i \
+            sed -i'' \
                 -e "s|@TERMUX_PYTHON_VERSION@|${_MAJOR_VERSION}|g" \
                 -e "s|@TERMUX_PKG_FULLVERSION@|${fullver}|g" \
                 "$file"
