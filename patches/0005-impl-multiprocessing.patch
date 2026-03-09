@@ -21,6 +21,8 @@
 +            _dir_candidates = []
          else:
              _dir_candidates = []
+ 
+
 --- a/Modules/_multiprocessing/posixshmem.c
 +++ b/Modules/_multiprocessing/posixshmem.c
 @@ -16,6 +16,84 @@ posixshmem - A Python extension that provides shm_open() and shm_unlink()
