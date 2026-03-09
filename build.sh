@@ -746,6 +746,7 @@ main() {
     mkdir -p "$TERMUX_PKG_CACHEDIR" "$TERMUX_PKG_SRCDIR" "$TERMUX_PKG_BUILDDIR"
 
     # 3. Download sources
+	rm -rf Python-${TERMUX_PKG_VERSION}.tgz
     _download "$_PYTHON_URL" \
               "${TERMUX_PKG_CACHEDIR}/Python-${TERMUX_PKG_VERSION}.tgz" \
               "$_PYTHON_SHA256"
@@ -754,6 +755,8 @@ main() {
               "$_DEBPYTHON_SHA256"
 
     # 4. Unpack CPython
+	df -h
+	ls -lh "${TERMUX_PKG_CACHEDIR}/Python-${TERMUX_PKG_VERSION}.tgz"
     echo "[unpack] Python-${TERMUX_PKG_VERSION}.tgz"
     rm -rf "$TERMUX_PKG_SRCDIR"
     mkdir -p "$TERMUX_PKG_SRCDIR"
