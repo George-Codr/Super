@@ -93,10 +93,10 @@ _DEBPYTHON_COMMIT=f358ab52bf2932ad55b1a72a29c9762169e6ac47
 # =============================================================================
 _PYTHON_URL="https://www.python.org/ftp/python/${TERMUX_PKG_VERSION}/Python-${TERMUX_PKG_VERSION}.tgz"
 # FIX: corrected from 63-char truncated hash to full 64-char SHA256
-_PYTHON_SHA256="2a84cd31dd8d8ea8aaff75de66fc1b4b0127dd5799aa50a64ae9a313885b4593f"
+_PYTHON_SHA256="12e7cb170ad2d1a69aee96a1cc7fc8de5b1e97a2bdac51683a3db016ec9a2996"
 
 _DEBPYTHON_URL="https://salsa.debian.org/cpython-team/python3-defaults/-/archive/${_DEBPYTHON_COMMIT}/python3-defaults-${_DEBPYTHON_COMMIT}.tar.gz"
-_DEBPYTHON_SHA256="12e7cb170ad2d1a69aee96a1cc7fc8de5b1e97a2bdac51683a3db016ec9a2996"
+_DEBPYTHON_SHA256="3b7a76c144d39f5c4a2c7789fd4beb3266980c2e667ad36167e1e7a357c684b0"
 
 # =============================================================================
 # §3  DEPENDENCIES  [A]+[B]
@@ -747,17 +747,17 @@ main() {
 
     # 3. Download sources
     _download "$_PYTHON_URL" \
-              "${TERMUX_PKG_CACHEDIR}/Python-${TERMUX_PKG_VERSION}.tar.xz" \
+              "${TERMUX_PKG_CACHEDIR}/Python-${TERMUX_PKG_VERSION}.tgz" \
               "$_PYTHON_SHA256"
     _download "$_DEBPYTHON_URL" \
               "${TERMUX_PKG_CACHEDIR}/python3-defaults-${_DEBPYTHON_COMMIT}.tar.gz" \
               "$_DEBPYTHON_SHA256"
 
     # 4. Unpack CPython
-    echo "[unpack] Python-${TERMUX_PKG_VERSION}.tar.xz"
+    echo "[unpack] Python-${TERMUX_PKG_VERSION}.tgz"
     rm -rf "$TERMUX_PKG_SRCDIR"
     mkdir -p "$TERMUX_PKG_SRCDIR"
-    tar -xf "${TERMUX_PKG_CACHEDIR}/Python-${TERMUX_PKG_VERSION}.tar.xz" \
+    tar -xzvf "${TERMUX_PKG_CACHEDIR}/Python-${TERMUX_PKG_VERSION}.tgz" \
         --strip-components=1 -C "$TERMUX_PKG_SRCDIR"
 
     # 5. Unpack debpython into srcdir
