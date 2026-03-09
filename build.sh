@@ -540,10 +540,12 @@ termux_step_pre_configure() {
     # ── §9.7  debpython version-placeholder substitution  [A] ─────────────
     if [[ -d "$TERMUX_PKG_SRCDIR/debpython" ]]; then
         local fullver="${TERMUX_PKG_VERSION}-${TERMUX_PKG_REVISION}"
-        find "$TERMUX_PKG_SRCDIR/debpython" -type f -exec sed -i \
-            -e "s|@TERMUX_PYTHON_VERSION@|${_MAJOR_VERSION}|g" \
-            -e "s|@TERMUX_PKG_FULLVERSION@|${fullver}|g" \
-            {} +
+        while IFS= read -r -d '' file; do
+            sed -i \
+                -e "s|@TERMUX_PYTHON_VERSION@|${_MAJOR_VERSION}|g" \
+                -e "s|@TERMUX_PKG_FULLVERSION@|${fullver}|g" \
+                "$file"
+        done < <(find "$TERMUX_PKG_SRCDIR/debpython" -type f -print0)
     fi
 
     # ── §9.8  Regenerate autotools configure  [A] ─────────────────────────
