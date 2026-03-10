@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [ master ]
-    
 
 jobs:
   build:
@@ -24,10 +23,27 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install wget unzip git make pkg-config automake autoconf coreutils
+          brew update
+          brew upgrade
+          brew install wget curl git unzip make pkg-config automake libtool m4 coreutils gawk xz openssl sqlite readline zlib libffi
+          brew install automake libtool m4
+          export PATH="/opt/homebrew/opt/automake/bin:$PATH"
+          export PATH="/opt/homebrew/opt/libtool/bin:$PATH"
+          export PATH="/opt/homebrew/opt/m4/bin:$PATH"
           echo "/opt/homebrew/opt/coreutils/libexec/gnubin" >> $GITHUB_PATH || true
           xcode-select --install || echo "Xcode CLI tools already installed"
 
+      - name: Install Autoconf 2.71
+        run: |
+          which autoconf
+          curl -O https://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz
+          tar xf autoconf-2.71.tar.gz
+          cd autoconf-2.71
+          ./configure --prefix=$HOME/.local
+          make -j$(sysctl -n hw.logicalcpu)
+          make install
+          export PATH="$HOME/.local/bin:$PATH"
+          autoconf --version
       - name: Download Android command line tools
         run: |
           set -euxo pipefail
@@ -75,10 +91,11 @@ jobs:
           fi
 
           echo "$TOOLCHAIN/bin" >> $GITHUB_PATH
+          ls $TOOLCHAIN/bin
 
-          if [ -x "$TOOLCHAIN/bin/clang" ]; then
-            echo "CC=$TOOLCHAIN/bin/clang" >> $GITHUB_ENV
-            echo "CXX=$TOOLCHAIN/bin/clang++" >> $GITHUB_ENV
+          if [ -x "$TOOLCHAIN/bin/aarch64-linux-android35-clang" ]; then
+            echo "CC=$TOOLCHAIN/bin/aarch64-linux-android35-clang" >> $GITHUB_ENV
+            echo "CXX=$TOOLCHAIN/bin/aarch64-linux-android35-clang++" >> $GITHUB_ENV
           else
             echo "CC=$(command -v clang)" >> $GITHUB_ENV
             echo "CXX=$(command -v clang++)" >> $GITHUB_ENV
@@ -101,6 +118,7 @@ jobs:
       - name: Build Python
         run: |
           export PREFIX="$PREFIX"
+          autoconf --version
           ./build.sh
 
       - name: Show result
