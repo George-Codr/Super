@@ -23,10 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew update
-          brew upgrade
           brew install wget curl git unzip make pkg-config automake libtool m4 coreutils gawk xz openssl sqlite readline zlib libffi
-          brew install automake libtool m4
           export PATH="/opt/homebrew/opt/automake/bin:$PATH"
           export PATH="/opt/homebrew/opt/libtool/bin:$PATH"
           export PATH="/opt/homebrew/opt/m4/bin:$PATH"
@@ -84,7 +81,6 @@ jobs:
           ls $NDK_PATH/toolchains
           ls $NDK_PATH/toolchains/llvm
           ls $NDK_PATH/toolchains/llvm/prebuilt
-          ls $NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64
 
           if [ "$ARCH" = "x86_64" ] && [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
             TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64"
