@@ -71,6 +71,8 @@ jobs:
             TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64"
           elif [ "$ARCH" = "x86_64" ]; then
             TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64"
+          elif [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64" ]; then
+            TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64"
           elif [ "$ARCH" = "arm64" ] && [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64" ]; then
             TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64"
           else
@@ -84,8 +86,8 @@ jobs:
           ls $TOOLCHAIN/bin
 
           if [ -x "$TOOLCHAIN/bin/aarch64-linux-android35-clang" ]; then
-            echo "CC=$TOOLCHAIN/bin/aarch64-linux-android35-clang --sysroot=$SYSROOT" >> $GITHUB_ENV
-            echo "CXX=$TOOLCHAIN/bin/aarch64-linux-android35-clang++ --sysroot=$SYSROOT" >> $GITHUB_ENV
+            echo "CC=$TOOLCHAIN/bin/aarch64-linux-android35-clang" >> $GITHUB_ENV
+            echo "CXX=$TOOLCHAIN/bin/aarch64-linux-android35-clang++" >> $GITHUB_ENV
           else
             echo "CC=$(command -v clang)" >> $GITHUB_ENV
             echo "CXX=$(command -v clang++)" >> $GITHUB_ENV
@@ -98,6 +100,8 @@ jobs:
 
           echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
           echo "✅ Using Clang from SDK/NDK"
+          $CC --version
+          $CXX --version
 
       - name: Prepare prefix
         run: mkdir -p "$PREFIX"
