@@ -63,12 +63,11 @@ jobs:
       - name: Install Android NDK
         run: |
           set -euxo pipefail
-          sdkmanager --sdk_root="$ANDROID_HOME" \
-            "platform-tools" \
-            "platforms;android-${ANDROID_SDK_VERSION}" \
-            "build-tools;${ANDROID_BUILD_TOOLS}" \
+          mkdir -p $ANDROID_HOME
+          sdkmanager --sdk_root=$ANDROID_HOME platform-tools \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
             "ndk;${ANDROID_NDK_VERSION}"
-
           echo "✅ Android NDK ${ANDROID_NDK_VERSION} installed."
           ls -1 "$ANDROID_HOME/ndk/"
 
