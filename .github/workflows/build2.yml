@@ -80,22 +80,25 @@ jobs:
           set -euxo pipefail
 
           NDK_PATH="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+          ARCH=$(uname -m)
 
-          if [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
+          if [ "$ARCH" = "x86_64" ] && [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
             TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64"
-          elif [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64" ]; then
+          elif [ "$ARCH" = "arm64" ] && [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64" ]; then
             TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64"
           else
             echo "⚠️ NDK toolchain not found; using system clang"
             TOOLCHAIN="/usr"
           fi
+          export SYSROOT=$TOOLCHAIN/sysroot
+          echo "Using TOOLCHAIN: $TOOLCHAIN"
 
           echo "$TOOLCHAIN/bin" >> $GITHUB_PATH
           ls $TOOLCHAIN/bin
 
           if [ -x "$TOOLCHAIN/bin/aarch64-linux-android35-clang" ]; then
-            echo "CC=$TOOLCHAIN/bin/aarch64-linux-android35-clang" >> $GITHUB_ENV
-            echo "CXX=$TOOLCHAIN/bin/aarch64-linux-android35-clang++" >> $GITHUB_ENV
+            echo "CC=$TOOLCHAIN/bin/aarch64-linux-android35-clang --sysroot=$SYSROOT" >> $GITHUB_ENV
+            echo "CXX=$TOOLCHAIN/bin/aarch64-linux-android35-clang++ --sysroot=$SYSROOT" >> $GITHUB_ENV
           else
             echo "CC=$(command -v clang)" >> $GITHUB_ENV
             echo "CXX=$(command -v clang++)" >> $GITHUB_ENV
