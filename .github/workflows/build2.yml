@@ -41,25 +41,8 @@ jobs:
           make install
           export PATH="$HOME/.local/bin:$PATH"
           autoconf --version
-      - name: Download Android command line tools
-        run: |
-          set -euxo pipefail
-          mkdir -p "$ANDROID_HOME"
-          cd "$ANDROID_HOME"
-
-          wget https://dl.google.com/android/repository/commandlinetools-mac-9477386_latest.zip -O tools.zip
-          unzip -q tools.zip
-          rm tools.zip
-
-          mkdir -p cmdline-tools/latest
-          mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
-
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-
-      - name: Accept SDK licenses
-        run: |
-          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
-
+      - name: Set up Android SDK + NDK
+        uses: android-actions/setup-android@v3
       - name: Install Android NDK
         run: |
           set -euxo pipefail
