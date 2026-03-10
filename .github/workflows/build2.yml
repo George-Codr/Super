@@ -81,6 +81,10 @@ jobs:
 
           NDK_PATH="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
           ARCH=$(uname -m)
+          ls $NDK_PATH/toolchains
+          ls $NDK_PATH/toolchains/llvm
+          ls $NDK_PATH/toolchains/llvm/prebuilt
+          ls $NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64
 
           if [ "$ARCH" = "x86_64" ] && [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
             TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64"
