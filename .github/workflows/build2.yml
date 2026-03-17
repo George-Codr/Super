@@ -6,115 +6,214 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  buildd:
+    name: Build .deb for Android
     runs-on: macos-14
+
     env:
-      ANDROID_HOME: ${{ github.workspace }}/android-sdk
-      PREFIX: ${{ github.workspace }}/prefix
-      ANDROID_SDK_VERSION: 35
-      ANDROID_BUILD_TOOLS: 35.0.0
-      ANDROID_NDK_VERSION: 27.3.13750724
-      TERMUX_ARCH: arm64
-      TERMUX_PKG_API_LEVEL: 35
+      # ── Android SDK / NDK ────────────────────────────────────────────────────
+      ANDROID_HOME:         ${{ github.workspace }}/android-sdk
+      ANDROID_NDK_VERSION:  "27.3.13750724"   # LTS release — ships darwin-x86_64 toolchain
+      ANDROID_SDK_VERSION:  "35"
+      ANDROID_BUILD_TOOLS:  "35.0.0"
+      # ── Termux target ────────────────────────────────────────────────────────
+      TERMUX_PKG_API_LEVEL: "35"
+      TERMUX_ARCH:          "aarch64"          # canonical form expected by build.sh
+      # ── Python package version (must match build.sh TERMUX_PKG_VERSION) ─────
+      PYTHON_VERSION:       "3.13.12"
+      # ── Install prefix — picked up by build.sh via $PREFIX fallback ─────────
+      PREFIX:               ${{ github.workspace }}/prefix
 
     steps:
-      - name: Checkout Repository
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Install dependencies
+      # ── 2. Host dependencies ─────────────────────────────────────────────────
+      # gnu-tar   : build.sh uses 'tar -xJf' and '_create_deb' uses tar; BSD tar
+      #             supports -J only with a separate xz binary — simpler to have
+      #             gtar available for the unpack step too.
+      # xz        : used directly in _create_deb when dpkg-deb is absent.
+      # binutils  : provides GNU 'gar' (ar) for building the .deb ar archive;
+      #             BSD ar also works but GNU ar is safer for cross-platform debs.
+      # nproc     : part of coreutils — used by _detect_cpu_count in build.sh.
+      - name: Install host dependencies
         run: |
-          brew install wget curl git unzip make pkg-config automake libtool m4 coreutils gawk xz openssl sqlite readline zlib libffi
-          export PATH="/opt/homebrew/opt/automake/bin:$PATH"
-          export PATH="/opt/homebrew/opt/libtool/bin:$PATH"
-          export PATH="/opt/homebrew/opt/m4/bin:$PATH"
-          echo "/opt/homebrew/opt/coreutils/libexec/gnubin" >> $GITHUB_PATH || true
-          xcode-select --install || echo "Xcode CLI tools already installed"
+          set -euo pipefail
+          brew install --quiet \
+            wget curl git unzip make pkg-config \
+            coreutils gawk xz zstd gnu-tar binutils \
+            openssl sqlite readline zlib libffi
+          # Prepend GNU tool paths so nproc, gtar, gar etc. shadow BSD equivalents
+          {
+            echo "/opt/homebrew/opt/coreutils/libexec/gnubin"
+            echo "/opt/homebrew/opt/gnu-tar/libexec/gnubin"
+            echo "/opt/homebrew/opt/binutils/bin"
+            echo "/opt/homebrew/opt/openssl/bin"
+          } >> "$GITHUB_PATH"
 
-      - name: Install Autoconf 2.71
+      # ── 2b. LLVM + Clang 21.1.8 ─────────────────────────────────────────────
+      # Install the exact LLVM 21.1.8 release binary from the official LLVM
+      # GitHub release. The macos-14 runner is Apple Silicon (ARM64).
+      # We use LLVM from the official release (not NDK-bundled clang) for a
+      # known, reproducible compiler version. The NDK is still used for its
+      # sysroot (Android headers and system libraries) only.
+      - name: Install LLVM + Clang 21.1.8
         run: |
-          which autoconf
-          curl -O https://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz
-          tar xf autoconf-2.71.tar.gz
-          cd autoconf-2.71
-          ./configure --prefix=$HOME/.local
-          make -j$(sysctl -n hw.logicalcpu)
-          make install
-          export PATH="$HOME/.local/bin:$PATH"
-          autoconf --version
-      - name: Set up Android SDK + NDK
+          set -euo pipefail
+          LLVM_VERSION="21.1.8"
+          LLVM_TAG="llvmorg-${LLVM_VERSION}"
+          LLVM_ARCHIVE="LLVM-${LLVM_VERSION}-macOS-ARM64.tar.xz"
+          LLVM_URL="https://github.com/llvm/llvm-project/releases/download/${LLVM_TAG}/${LLVM_ARCHIVE}"
+          LLVM_DIR="${HOME}/llvm-${LLVM_VERSION}"
+
+          echo "Downloading ${LLVM_ARCHIVE} ..."
+          curl -fL --retry 5 --retry-delay 2 --connect-timeout 60 \
+               -o "/tmp/${LLVM_ARCHIVE}" "$LLVM_URL"
+
+          echo "Extracting to ${LLVM_DIR} ..."
+          mkdir -p "$LLVM_DIR"
+          tar -xJf "/tmp/${LLVM_ARCHIVE}" --strip-components=1 -C "$LLVM_DIR"
+          rm -f "/tmp/${LLVM_ARCHIVE}"
+
+          # Verify the clang version we just installed
+          "${LLVM_DIR}/bin/clang" --version
+
+          # Export LLVM_DIR so subsequent steps can reference it
+          echo "LLVM_DIR=${LLVM_DIR}" >> "$GITHUB_ENV"
+          # Prepend to PATH so clang/llvm-* tools shadow any system ones
+          echo "${LLVM_DIR}/bin" >> "$GITHUB_PATH"
+          {
+            echo "PKG_CONFIG_PATH=/opt/homebrew/opt/openssl/lib/pkgconfig:/opt/homebrew/opt/readline/lib/pkgconfig:/opt/homebrew/opt/zlib/lib/pkgconfig:/opt/homebrew/opt/libffi/lib/pkgconfig:/opt/homebrew/opt/sqlite/lib/pkgconfig"
+            echo "LDFLAGS_HOST=-L/opt/homebrew/opt/openssl/lib -L/opt/homebrew/opt/readline/lib -L/opt/homebrew/opt/zlib/lib"
+            echo "CPPFLAGS_HOST=-I/opt/homebrew/opt/openssl/include -I/opt/homebrew/opt/readline/include -I/opt/homebrew/opt/zlib/include"
+          } >> "$GITHUB_ENV"
+
+      # ── 3. Android SDK ───────────────────────────────────────────────────────
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Install Android NDK
+
+      # ── 4. NDK ───────────────────────────────────────────────────────────────
+      - name: Install Android NDK ${{ env.ANDROID_NDK_VERSION }}
         run: |
           set -euxo pipefail
-          mkdir -p $ANDROID_HOME
-          sdkmanager \
+          mkdir -p "$ANDROID_HOME"
+          sdkmanager --install \
             "platform-tools" \
             "platforms;android-${ANDROID_SDK_VERSION}" \
             "build-tools;${ANDROID_BUILD_TOOLS}" \
             "ndk;${ANDROID_NDK_VERSION}"
-          echo "✅ Android NDK ${ANDROID_NDK_VERSION} installed."
           ls -1 "$ANDROID_HOME/ndk/"
 
-      - name: Set environment to use SDK/NDK Clang
+      # ── 4b. Replace NDK clang/llvm with LLVM 21.1.8 ─────────────────────────
+      # The NDK ships its own clang (~18.x). We replace every clang/llvm binary
+      # in the NDK toolchain bin/ with symlinks to LLVM 21.1.8 so that all code
+      # paths — including the target-triple wrapper scripts
+      # (aarch64-linux-android35-clang etc.) — transparently use LLVM 21.1.8.
+      # The NDK sysroot (headers + Android libs) is kept untouched.
+      - name: Replace NDK clang/llvm with LLVM 21.1.8
         run: |
-          set -euxo pipefail
-
+          set -euo pipefail
           NDK_PATH="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
-          ARCH=$(uname -m)
-          ls $NDK_PATH/toolchains
-          ls $NDK_PATH/toolchains/llvm
-          ls $NDK_PATH/toolchains/llvm/prebuilt
+          PREBUILT="$NDK_PATH/toolchains/llvm/prebuilt"
 
-          if [ "$ARCH" = "x86_64" ] && [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
-            TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64"
-          elif [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64" ]; then
-            TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64"
-          elif [ "$ARCH" = "x86_64" ]; then
-            TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64"
-          elif [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64" ]; then
-            TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64"
-          elif [ "$ARCH" = "arm64" ] && [ -d "$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64" ]; then
-            TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/darwin-arm64"
-          else
-            echo "⚠️ NDK toolchain not found; using system clang"
-            TOOLCHAIN="/usr"
-          fi
-          export SYSROOT=$TOOLCHAIN/sysroot
-          echo "Using TOOLCHAIN: $TOOLCHAIN"
+          if   [ -d "$PREBUILT/darwin-x86_64" ]; then NDK_BIN="$PREBUILT/darwin-x86_64/bin"
+          elif [ -d "$PREBUILT/darwin-arm64"  ]; then NDK_BIN="$PREBUILT/darwin-arm64/bin"
+          else echo "No NDK prebuilt dir under $PREBUILT"; exit 1; fi
 
-          echo "$TOOLCHAIN/bin" >> $GITHUB_PATH
-          ls $TOOLCHAIN/bin
+          LLVM_BIN="${LLVM_DIR}/bin"
+          echo "Replacing NDK binaries in: $NDK_BIN"
+          echo "With LLVM 21.1.8 from:     $LLVM_BIN"
 
-          if [ -x "$TOOLCHAIN/bin/aarch64-linux-android35-clang" ]; then
-            echo "CC=$TOOLCHAIN/bin/aarch64-linux-android35-clang" >> $GITHUB_ENV
-            echo "CXX=$TOOLCHAIN/bin/aarch64-linux-android35-clang++" >> $GITHUB_ENV
-          else
-            echo "CC=$(command -v clang)" >> $GITHUB_ENV
-            echo "CXX=$(command -v clang++)" >> $GITHUB_ENV
-          fi
+          # For every plain binary in LLVM_BIN that also exists in NDK_BIN,
+          # replace the NDK copy with a symlink to the LLVM 21.1.8 binary.
+          # Skip the target-triple wrapper scripts (e.g. aarch64-linux-android35-clang)
+          # — those are shell scripts that invoke clang with the right -target flag;
+          # they must stay as-is because they already call the clang in their own
+          # directory, which will now be our symlink.
+          replaced=0
+          for llvm_bin in "$LLVM_BIN"/*; do
+            name="$(basename "$llvm_bin")"
+            ndk_target="$NDK_BIN/$name"
+            # Only replace if the NDK has an exact name match and it is a real
+            # file (not already a symlink, not a shell-script wrapper)
+            if [[ -f "$ndk_target" ]] && [[ ! -L "$ndk_target" ]]; then
+              file_type="$(file -b "$ndk_target")"
+              if [[ "$file_type" == *"shell script"* ]]; then
+                echo "  skip (shell wrapper): $name"
+                continue
+              fi
+              ln -sf "$llvm_bin" "$ndk_target"
+              (( replaced++ )) || true
+              echo "  replaced: $name"
+            fi
+          done
+          echo "Replaced ${replaced} NDK binaries with LLVM 21.1.8 symlinks."
 
-          echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
-          echo "LD=$TOOLCHAIN/bin/ld.lld" >> $GITHUB_ENV
-          echo "NM=$TOOLCHAIN/bin/llvm-nm" >> $GITHUB_ENV
-          echo "RANLIB=$TOOLCHAIN/bin/llvm-ranlib" >> $GITHUB_ENV
+          # Verify clang in NDK bin now reports 21.1.8
+          "$NDK_BIN/clang" --version
 
-          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
-          echo "✅ Using Clang from SDK/NDK"
-          $CC --version
-          $CXX --version
-
-      - name: Prepare prefix
-        run: mkdir -p "$PREFIX"
-
-      - name: Make build script executable
-        run: chmod +x build.sh
-
-      - name: Build Python
+      # ── 5. Cross-compile environment ─────────────────────────────────────────
+      # CC/CXX point at the NDK target-triple wrapper scripts, which now invoke
+      # LLVM 21.1.8 clang (via symlink replacement above) with the correct
+      # -target and --sysroot flags baked in by the NDK wrapper.
+      - name: Configure cross-compilation environment
         run: |
-          export PREFIX="$PREFIX"
-          autoconf --version
-          ./build.sh
+          set -euo pipefail
+          NDK_PATH="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+          PREBUILT="$NDK_PATH/toolchains/llvm/prebuilt"
 
-      - name: Show result
+          if   [ -d "$PREBUILT/darwin-x86_64" ]; then NDK_TOOLCHAIN="$PREBUILT/darwin-x86_64"
+          elif [ -d "$PREBUILT/darwin-arm64"  ]; then NDK_TOOLCHAIN="$PREBUILT/darwin-arm64"
+          else echo "No NDK prebuilt dir under $PREBUILT"; exit 1; fi
+
+          SYSROOT="$NDK_TOOLCHAIN/sysroot"
+          NDK_BIN="$NDK_TOOLCHAIN/bin"
+          ANDROID_API_LEVEL="${TERMUX_PKG_API_LEVEL}"
+          TARGET="aarch64-linux-android${ANDROID_API_LEVEL}"
+
+          # Use the NDK target-triple wrapper as CC/CXX — it sets -target and
+          # --sysroot automatically, and now invokes LLVM 21.1.8 underneath.
+          CC_BIN="$NDK_BIN/${TARGET}-clang"
+          CXX_BIN="$NDK_BIN/${TARGET}-clang++"
+          [ -f "$CC_BIN"  ] || { echo "CC wrapper not found: $CC_BIN";  exit 1; }
+          [ -f "$CXX_BIN" ] || { echo "CXX wrapper not found: $CXX_BIN"; exit 1; }
+
+          # Confirm the wrapper delegates to LLVM 21.1.8
+          "$CC_BIN" --version
+
+          {
+            echo "CC=${CC_BIN}"
+            echo "CXX=${CXX_BIN}"
+            echo "AR=${NDK_BIN}/llvm-ar"
+            echo "AS=${NDK_BIN}/llvm-as"
+            echo "LD=${NDK_BIN}/ld.lld"
+            echo "NM=${NDK_BIN}/llvm-nm"
+            echo "RANLIB=${NDK_BIN}/llvm-ranlib"
+            echo "STRIP=${NDK_BIN}/llvm-strip"
+            echo "OBJDUMP=${NDK_BIN}/llvm-objdump"
+            echo "SYSROOT=${SYSROOT}"
+            echo "ANDROID_NDK_HOME=${NDK_PATH}"
+            echo "ANDROID_API_LEVEL=${ANDROID_API_LEVEL}"
+            echo "CFLAGS=--sysroot=${SYSROOT} -target ${TARGET}"
+            echo "CXXFLAGS=--sysroot=${SYSROOT} -target ${TARGET}"
+            echo "LDFLAGS=--sysroot=${SYSROOT} -fuse-ld=lld"
+            echo "ANDROID_BUILD_TARGET=${TARGET}"
+            echo "TERMUX_STANDALONE_TOOLCHAIN=${NDK_TOOLCHAIN}"
+            echo "TERMUX_PREFIX=${{ github.workspace }}/prefix"
+          } >> "$GITHUB_ENV"
+
+      # ── 6. Smoke-test the cross-compiler ─────────────────────────────────────
+      - name: Verify cross-compiler
         run: |
-          ls -lh "$PREFIX/bin" || true
+          set -euo pipefail
+          "$CC" --version
+          echo 'int main(void){return 0;}' > /tmp/_cross_test.c
+          "$CC" $CFLAGS /tmp/_cross_test.c -o /tmp/_cross_test \
+            && echo "Cross-compile smoke test passed" \
+            || { echo "Cross-compile smoke test FAILED"; exit 1; }
+
+      # ── 7. Prefix directory ───────────────────────────────────────────────────
+      - name: Prepare output prefix
+        run: mkdir -p "${{ github.workspace }}/prefix"
+
