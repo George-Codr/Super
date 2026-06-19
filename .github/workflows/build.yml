@@ -48,7 +48,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install macOS dependencies for Python build
         run: |
@@ -64,7 +64,7 @@ jobs:
           brew uninstall gcc || true
           echo "✅ macOS build dependencies installed."
       - name: Set up Android SDK + NDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install Android NDK
         run: |
@@ -207,7 +207,7 @@ jobs:
           name: deb-pyv${{ matrix.version }}
           path: pyv_${{ matrix.version }}_aarch64.deb
       - name: Create / Update GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: pyv__a
           name: pyv
